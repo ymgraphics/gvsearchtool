@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,20 +12,27 @@
       height: 3rem;
       border-width: 0.4em;
     }
+
+    /* Card and slot styling */
+    .card {
+      margin-bottom: 1rem;
+    }
+    
+    .slot-dropdown {
+      max-width: 100%;
+    }
   </style>
 </head>
-
 <body>
 
   <div class="container mt-5">
     <h1 class="text-center">Search Opportunities</h1>
-
+    
     <form id="opportunityForm" class="mt-4">
       <!-- Committee Input -->
       <div class="mb-3">
         <label for="committeeName" class="form-label">Enter Committee Name</label>
-        <input type="text" class="form-control" id="committeeName" placeholder="Enter committee (e.g., Indonesia)"
-          required>
+        <input type="text" class="form-control" id="committeeName" placeholder="Enter committee (e.g., Indonesia)" required>
       </div>
 
       <button type="submit" class="btn btn-primary">Search Opportunities</button>
@@ -40,10 +46,37 @@
       <p class="mt-2">Loading results...</p>
     </div>
 
+    <!-- Filter Section -->
+    <div id="filters" class="mt-4">
+      <h2>Filters</h2>
+      <div class="mb-3">
+        <label for="homeLcFilter" class="form-label">Filter by Host LC</label>
+        <select id="homeLcFilter" class="form-select" >
+          <!-- Options will be added dynamically -->
+        </select>
+      </div>
+      <div class="mb-3">
+        <label for="projectFilter" class="form-label">Filter by Project</label>
+        <select id="projectFilter" class="form-select">
+          <!-- Options will be added dynamically -->
+        </select>
+      </div>
+      <button id="applyFilters" class="btn btn-primary">Apply Filters</button>
+    </div>
+
     <!-- Display Results -->
     <div id="results" class="mt-5">
       <h2 class="text-center">Results</h2>
-      <ul id="opportunitiesList" class="list-group"></ul>
+      <div id="opportunitiesList" class="list-group"></div>
+      
+      <!-- Pagination Controls -->
+      <nav id="pagination" class="mt-4 d-flex flex-column align-items-center">
+        <ul class="pagination mb-2">
+          <li class="page-item" id="prevPage"><a class="page-link" href="#">Previous</a></li>
+          <li class="page-item" id="nextPage"><a class="page-link" href="#">Next</a></li>
+        </ul>
+        <ul id="pageNumbers" class="pagination"></ul>
+      </nav>
     </div>
   </div>
 
@@ -51,32 +84,38 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    document.getElementById('opportunityForm').addEventListener('submit', async function (event) {
+    let opportunities = [];
+    let filteredOpportunities = [];
+    let currentPage = 1;
+    const resultsPerPage = 10;
+
+    document.getElementById('opportunityForm').addEventListener('submit', async function(event) {
       event.preventDefault();
 
       const committeeName = document.getElementById('committeeName').value;
-
+      
       if (committeeName) {
         // Show loading spinner
         document.getElementById('loading').style.display = 'block';
-
-        const opportunities = await fetchOpportunitiesForAllProjects(committeeName);
-
+        
+        opportunities = await fetchOpportunitiesForAllProjects(committeeName);
+        filteredOpportunities = opportunities; // Initially, no filtering
+        currentPage = 1;
+        
         // Hide loading spinner
         document.getElementById('loading').style.display = 'none';
-
-        displayOpportunities(opportunities);
+        
+        populateHomeLcFilter();
+        populateProjectFilter();
+        displayOpportunities();
       }
     });
 
-    // List of Project IDs
-    const projectIds = [
-      1302011, 1280513, 1280516, 1280520, 1285146, 1280523, 1280390,
-      1280526, 1280515, 1280511, 1281160, 1280518, 1280519, 1280521,
-      1285122, 1286012, 1286870, 1280522
-    ];
+    document.getElementById('applyFilters').addEventListener('click', function() {
+      applyFilters();
+      displayOpportunities();
+    });
 
-    // Fetch Opportunities for All Projects by Iterating Over Project IDs
     async function fetchOpportunitiesForAllProjects(committeeName) {
       const committeeId = await fetchCommitteeId(committeeName);
       const allOpportunities = [];
@@ -89,7 +128,95 @@
       return allOpportunities;
     }
 
-    // Fetch Opportunities by Project ID
+    function displayOpportunities() {
+      const opportunitiesList = document.getElementById('opportunitiesList');
+      const pageNumbers = document.getElementById('pageNumbers');
+      opportunitiesList.innerHTML = '';
+      pageNumbers.innerHTML = '';
+
+      const totalResults = filteredOpportunities.length;
+      const totalPages = Math.ceil(totalResults / resultsPerPage);
+
+      const startIndex = (currentPage - 1) * resultsPerPage;
+      const endIndex = Math.min(startIndex + resultsPerPage, totalResults);
+
+      if (totalResults === 0) {
+        opportunitiesList.innerHTML = '<li class="list-group-item">No opportunities found.</li>';
+      } else {
+        for (let i = startIndex; i < endIndex; i++) {
+          const opportunity = filteredOpportunities[i];
+          const slotOptions = opportunity.slots.length > 0 
+            ? `<select class="form-select slot-dropdown">
+                 <option value="">Select a slot</option>
+                 ${opportunity.slots.map(slot => `
+                   <option value="${slot.start_date}-${slot.end_date}">
+                     ${slot.start_date} to ${slot.end_date}
+                   </option>`).join('')}
+               </select>`
+            : 'No slots available';
+
+          const cardItem = `
+            <div class="card">
+              <div class="card-body">
+                <h3 class="text-primary">${opportunity.project.project_name}</h3>
+                <p><strong>Project Description:</strong> ${opportunity.project_description}</p>
+                <p><strong>Host LC:</strong> ${opportunity.host_lc.name}</p>
+                <p><strong>Home MC:</strong> ${opportunity.home_mc.name}</p>
+                <p><strong>Slots:</strong><br>${slotOptions}</p>
+                <a href="https://aiesec.org/opportunity/global-volunteer/${opportunity.id}" target="_blank" class="btn btn-outline-primary">
+                  View Opportunity
+                </a>
+              </div>
+            </div>
+          `;
+          opportunitiesList.innerHTML += cardItem;
+        }
+      }
+
+      // Update pagination controls
+      document.getElementById('prevPage').style.display = currentPage > 1 ? 'block' : 'none';
+      document.getElementById('nextPage').style.display = currentPage < totalPages ? 'block' : 'none';
+
+      // Create numerical page buttons
+      for (let page = 1; page <= totalPages; page++) {
+        const pageItem = document.createElement('li');
+        pageItem.className = `page-item ${page === currentPage ? 'active' : ''}`;
+        pageItem.innerHTML = `<a class="page-link" href="#">${page}</a>`;
+        pageItem.addEventListener('click', function(event) {
+          event.preventDefault();
+          currentPage = page;
+          displayOpportunities();
+        });
+        pageNumbers.appendChild(pageItem);
+      }
+
+      document.getElementById('prevPage').addEventListener('click', function() {
+        if (currentPage > 1) {
+          currentPage--;
+          displayOpportunities();
+        }
+      });
+
+      document.getElementById('nextPage').addEventListener('click', function() {
+        if (currentPage < totalPages) {
+          currentPage++;
+          displayOpportunities();
+        }
+      });
+    }
+
+    function applyFilters() {
+      const homeLcFilter = Array.from(document.getElementById('homeLcFilter').selectedOptions).map(option => option.value);
+      const selectedProject = document.getElementById('projectFilter').value;
+
+      filteredOpportunities = opportunities.filter(opportunity => {
+        const isHomeLcMatch = homeLcFilter.length === 0 || homeLcFilter.includes(opportunity.host_lc.name);
+        const isProjectMatch = !selectedProject || opportunity.project.id === parseInt(selectedProject);
+
+        return isHomeLcMatch && isProjectMatch;
+      });
+    }
+
     async function fetchOpportunitiesByProject(committeeId, projectId) {
       const query = getOpportunitiesQuery(committeeId, projectId);
 
@@ -106,7 +233,6 @@
       return data.data.allOpportunity.data;
     }
 
-    // Construct the GraphQL Query for a Single Project ID
     function getOpportunitiesQuery(committeeId, projectId) {
       return `
         query GetAllOpportunitiesQuery {
@@ -129,6 +255,7 @@
                 name
               }
               project {
+                id
                 project_name
               }
               slots {
@@ -141,7 +268,6 @@
       `;
     }
 
-    // Fetch Committee ID Based on Inputted Name
     async function fetchCommitteeId(committeeName) {
       const query = `
         query {
@@ -162,41 +288,31 @@
       });
 
       const data = await response.json();
-      return data.data.committeeAutocomplete[0]?.id;
+      return data.data.committeeAutocomplete[0]?.id; 
     }
 
-    // Display Opportunities in the Results Section
-    function displayOpportunities(opportunities) {
-      const opportunitiesList = document.getElementById('opportunitiesList');
-      opportunitiesList.innerHTML = '';
+    function populateHomeLcFilter() {
+      const homeLcFilter = document.getElementById('homeLcFilter');
+      const homeLcNames = [...new Set(opportunities.map(o => o.host_lc.name))];
 
-      if (opportunities.length === 0) {
-        opportunitiesList.innerHTML = '<li class="list-group-item">No opportunities found.</li>';
-      } else {
-        opportunities.forEach(opportunity => {
-          // Construct Slot Information
-          const slotDetails = opportunity.slots.length > 0
-            ? opportunity.slots.map(slot => `From ${slot.start_date} to ${slot.end_date}`).join('<br>')
-            : 'No slots available';
-
-          const listItem = `
-            <li class="list-group-item">
-              <h3 class="text-primary">${opportunity.project.project_name}</h3>
-              <p>${opportunity.description}</p>
-              <p><strong>Project Description:</strong> ${opportunity.project_description}</p>
-              <p><strong>Host LC:</strong> ${opportunity.host_lc.name}</p>
-              <p><strong>Home MC:</strong> ${opportunity.home_mc.name}</p>
-              <p><strong>Slots:</strong><br>${slotDetails}</p>
-              <a href="https://aiesec.org/opportunity/global-volunteer/${opportunity.id}" target="_blank" class="btn btn-outline-primary">
-                View Opportunity
-              </a>
-            </li>
-          `;
-          opportunitiesList.innerHTML += listItem;
-        });
-      }
+      homeLcFilter.innerHTML = homeLcNames.map(name => `<option value="${name}">${name}</option>`).join('');
     }
+
+    function populateProjectFilter() {
+      const projectFilter = document.getElementById('projectFilter');
+      projectFilter.innerHTML = `
+        <option value="">Select Project</option>
+        ${projectIds.map(id => `<option value="${id}">${id}</option>`).join('')}
+      `;
+    }
+
+    // List of Project IDs
+    const projectIds = [
+      1302011, 1280513, 1280516, 1280520, 1285146, 
+      1280523, 1280390, 1280526, 1280515, 1280511, 
+      1281160, 1280518, 1280519, 1280521, 1285122, 
+      1286012, 1286870, 1280522
+    ];
   </script>
 </body>
-
 </html>
