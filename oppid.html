@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIESEC Opportunity</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <style>
+    /* Add custom styles here if needed */
+    body {
+      padding: 20px;
+      background-color: #f8f9fa; /* Light background for better contrast */
+    }
+    .card {
+      margin-top: 20px; /* Space above card */
+    }
+    .btn-download {
+      margin-top: 10px; /* Space above the download button */
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1 class="mb-4">Opportunity Details</h1>
+
+  <div class="input-group mb-3">
+    <input type="text" id="opportunity-id-input" class="form-control" placeholder="Enter Opportunity ID" aria-label="Opportunity ID">
+    <button class="btn btn-primary" type="button" id="fetch-opportunity-button">Fetch Opportunity</button>
+  </div>
+
+  <div id="opportunity-details" class="card d-none">
+    <div class="card-body">
+      <h5 class="card-title" id="opportunity-title"></h5>
+      <p class="card-text" id="opportunity-description"></p>
+      <p class="card-text"><strong>Host LC:</strong> <span id="opportunity-host-lc"></span></p>
+      <p class="card-text"><strong>Home MC:</strong> <span id="opportunity-home-mc"></span></p>
+      <p class="card-text"><strong>Project:</strong> <span id="opportunity-project"></span></p>
+      <p class="card-text"><strong>Branch:</strong> <span id="opportunity-branch"></span></p>
+      <p class="card-text"><strong>Location:</strong> <span id="opportunity-location"></span></p>
+      <p class="card-text"><strong>SDG Target:</strong> <span id="opportunity-sdg-target"></span></p>
+      <button class="btn btn-success btn-download" id="download-json-button">Download JSON</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+<script>
+  async function getOpportunity(opportunityId) {
+    const query = `
+      query GetOpportunityByIdQuery($id: ID!) {
+        opportunity(id: $id) {
+          id
+          project_description
+          host_lc {
+            name
+          }
+          home_mc {
+            name
+          }
+          project {
+            project_name
+            sdg_info {
+              sdg_target {
+                target_id
+              }
+            }
+          }
+          branch {
+            company {
+              name
+            }
+          }
+          location
+        }
+}
+
+    `;
+
+    const variables = {
+      id: opportunityId,
+    };
+
+    const response = await fetch('https://gis-api.aiesec.org/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': '797149ff3e2ee6a8abc4f101a77c714caf9463dcb69be8bd5d53e0698064aa91',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    const data = await response.json();
+    return data.data.opportunity;
+  }
+
+  const fetchButton = document.getElementById('fetch-opportunity-button');
+  const opportunityIdInput = document.getElementById('opportunity-id-input');
+  const downloadButton = document.getElementById('download-json-button');
+
+  fetchButton.addEventListener('click', () => {
+    const opportunityId = opportunityIdInput.value;
+    getOpportunity(opportunityId)
+      .then((opportunity) => {
+        document.getElementById('opportunity-title').textContent = opportunity.id;
+        document.getElementById('opportunity-description').textContent = opportunity.project_description;
+        document.getElementById('opportunity-host-lc').textContent = opportunity.host_lc.name;
+        document.getElementById('opportunity-home-mc').textContent = opportunity.home_mc.name;
+        document.getElementById('opportunity-project').textContent = opportunity.project.project_name;
+        document.getElementById('opportunity-branch').textContent = opportunity.branch.company.name;
+        document.getElementById('opportunity-location').textContent = opportunity.location;
+        document.getElementById('opportunity-sdg-target').textContent = opportunity.project.sdg_info.sdg_target.target_id;
+
+        // Show the card with opportunity details
+        document.getElementById('opportunity-details').classList.remove('d-none');
+
+        // Set up the download JSON button
+        downloadButton.onclick = () => downloadJSON(opportunity);
+      })
+      .catch((error) => {
+        console.error('Error fetching opportunity:', error);
+        document.getElementById('opportunity-details').innerHTML = '<div class="card-body"><p class="card-text">Error loading opportunity details.</p></div>';
+      });
+  });
+
+  function downloadJSON(data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `opportunity_${data.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url); // Clean up the URL object
+  }
+</script>
+
+</body>
+</html>
